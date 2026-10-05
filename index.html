@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DM YouTube Widget</title>
+  <style>
+    :root {
+      --dm-blue:       #1E71AF;
+      --dm-blue-light: #e8f2fb;
+      --dm-ink-1:      #171717;
+      --dm-ink-2:      #292929;
+      --dm-ink-4:      #6B6C6D;
+      --dm-grey-1:     #E9E9E9;
+      --dm-grey-3:     #F2F2F2;
+      --font-ui:       "Geist","Helvetica Neue",Arial,sans-serif;
+      --font-serif:    Georgia,"Times New Roman",serif;
+      --font-utility:  "Helvetica Neue",Helvetica,Arial,sans-serif;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #fff; padding: 32px 20px; }
+    .wrap { max-width: 1000px; margin: 0 auto; }
+
+    /* Player wrapper */
+    .dm-yt-wrap {
+      display: grid;
+      grid-template-columns: 1fr 260px;
+      border: 1px solid var(--dm-blue);
+    }
+
+    /* Main player */
+    .dm-yt-main { display: flex; flex-direction: column; }
+
+    /* Loading state — shown before API resolves */
+    .dm-yt-loading-screen {
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #111;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .dm-yt-spinner {
+      width: 32px; height: 32px;
+      border: 3px solid #333;
+      border-top-color: var(--dm-blue);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .dm-yt-loading-screen span {
+      font-family: var(--font-utility); font-size: 12px; color: #666;
+    }
+
+    /* Iframe — hidden until we have a real video ID */
+    .dm-yt-main iframe {
+      width: 100%; aspect-ratio: 16/9;
+      display: none; border: none; background: #000;
+    }
+    .dm-yt-main iframe.ready { display: block; }
+
+    /* Now playing bar */
+    .dm-yt-now {
+      padding: 12px 16px;
+      background: var(--dm-blue-light);
+      border-top: 1px solid var(--dm-blue);
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .dm-yt-now-text { flex: 1; min-width: 0; }
+    .dm-yt-now-label {
+      font-family: var(--font-ui); font-size: 9px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--dm-blue); margin-bottom: 4px;
+    }
+    .dm-yt-now-title {
+      font-family: var(--font-serif); font-size: 14px; line-height: 1.35;
+      color: var(--dm-ink-1);
+    }
+    .dm-yt-now-ch {
+      font-family: var(--font-utility); font-size: 11px;
+      color: var(--dm-ink-4); margin-top: 3px;
+    }
+    /* Watch on YouTube button */
+    .dm-yt-watch-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      flex-shrink: 0;
+      margin-top: 2px;
+      font-family: var(--font-ui);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #fff;
+      background: #FF0000;
+      border-radius: 3px;
+      padding: 5px 9px;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .dm-yt-watch-link:hover { opacity: 0.85; }
+    .dm-yt-watch-link svg { flex-shrink: 0; }
+
+    /* Sidebar */
+    .dm-yt-sidebar {
+      border-left: 1px solid var(--dm-blue);
+      overflow-y: auto;
+      max-height: 420px;
+      background: var(--dm-grey-3);
+    }
+    .dm-yt-sidebar-header {
+      padding: 10px 12px;
+      font-family: var(--font-ui); font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.06em; color: var(--dm-ink-4);
+      border-bottom: 1px solid var(--dm-grey-1);
+      position: sticky; top: 0; background: var(--dm-grey-3); z-index: 1;
+    }
+    .dm-yt-sidebar-loading {
+      padding: 16px 12px;
+      font-family: var(--font-utility); font-size: 12px; color: var(--dm-ink-4);
+    }
+
+    /* Playlist items */
+    .dm-yt-item {
+      display: flex; gap: 10px; align-items: flex-start;
+      padding: 10px 12px; cursor: pointer;
+      border-bottom: 1px solid var(--dm-grey-1);
+      transition: background 0.1s;
+    }
+    .dm-yt-item:hover { background: var(--dm-blue-light); }
+    .dm-yt-item.active {
+      background: var(--dm-blue-light);
+      border-left: 3px solid var(--dm-blue);
+      padding-left: 9px;
+    }
+    .dm-yt-thumb {
+      width: 80px; height: 45px; flex-shrink: 0;
+      overflow: hidden; background: var(--dm-grey-1);
+      border: 1px solid var(--dm-grey-1);
+    }
+    .dm-yt-item.active .dm-yt-thumb { border-color: var(--dm-blue); }
+    .dm-yt-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .dm-yt-item-meta { flex: 1; min-width: 0; }
+    .dm-yt-item-title {
+      font-family: var(--font-serif); font-size: 12px; line-height: 1.35; color: var(--dm-ink-2);
+      display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+    }
+    .dm-yt-item.active .dm-yt-item-title { color: var(--dm-blue); }
+    .dm-yt-item-num { font-family: var(--font-ui); font-size: 10px; color: var(--dm-ink-4); margin-top: 4px; }
+
+    @media (max-width: 760px) {
+      .dm-yt-wrap { grid-template-columns: 1fr; }
+      .dm-yt-sidebar { max-height: 240px; border-left: none; border-top: 1px solid var(--dm-blue); }
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="dm-yt-wrap">
+
+    <!-- Main player -->
+    <div class="dm-yt-main">
+      <!-- Spinner shown while API loads -->
+      <div class="dm-yt-loading-screen" id="dm-yt-loading-screen">
+        <div class="dm-yt-spinner"></div>
+        <span>Loading playlist…</span>
+      </div>
+      <!-- Iframe injected once we have a real video ID -->
+      <iframe referrerpolicy="strict-origin-when-cross-origin"
+        id="dm-yt-iframe"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+        allowfullscreen>
+      </iframe>
+      <div class="dm-yt-now">
+        <div class="dm-yt-now-text">
+          <div class="dm-yt-now-label">Now Playing</div>
+          <div class="dm-yt-now-title" id="dm-yt-now-title">—</div>
+          <div class="dm-yt-now-ch"    id="dm-yt-now-ch"></div>
+        </div>
+        <a class="dm-yt-watch-link" id="dm-yt-watch-link" href="#" target="_blank" rel="noopener">
+          <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+            <path d="M11.5 1.4A1.5 1.5 0 0010.4.3C9.5 0 6 0 6 0S2.5 0 1.6.3A1.5 1.5 0 00.5 1.4C.2 2.3.2 4.5.2 4.5s0 2.2.3 3.1A1.5 1.5 0 001.6 8.7C2.5 9 6 9 6 9s3.5 0 4.4-.3a1.5 1.5 0 001.1-1.1c.3-.9.3-3.1.3-3.1s0-2.2-.3-3.1z" fill="white"/>
+            <path d="M4.8 6.4L7.9 4.5 4.8 2.6v3.8z" fill="#FF0000"/>
+          </svg>
+          Watch on YouTube
+        </a>
+      </div>
+    </div>
+
+    <!-- Sidebar -->
+    <div class="dm-yt-sidebar" id="dm-yt-sidebar">
+      <div class="dm-yt-sidebar-header">Playlist</div>
+      <div class="dm-yt-sidebar-loading">Loading videos…</div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+(function () {
+  var PLAYLIST_ID = 'PLZW8j0t33M0Q';
+  var YT_KEY      = 'AIzaSyBMbbutEwNP4Ul7RgyFY26IQvqdxFVAxko';
+  var videos = [];
+
+  function embedUrl(videoId) {
+    // Direct video embed — avoids Error 153 playlist restriction
+    return 'https://www.youtube.com/embed/' + videoId + '?rel=0&modestbranding=1';
+  }
+
+  function watchUrl(videoId) {
+    return 'https://www.youtube.com/watch?v=' + videoId + '&list=' + PLAYLIST_ID;
+  }
+
+  function selectVideo(i) {
+    var v = videos[i];
+
+    // Swap iframe to direct video URL
+    var iframe = document.getElementById('dm-yt-iframe');
+    iframe.src = embedUrl(v.id);
+    iframe.classList.add('ready');
+    document.getElementById('dm-yt-loading-screen').style.display = 'none';
+
+    // Update now-playing bar
+    document.getElementById('dm-yt-now-title').textContent = v.title;
+    document.getElementById('dm-yt-now-ch').textContent    = v.channel;
+    document.getElementById('dm-yt-watch-link').href       = watchUrl(v.id);
+
+    // Update active state
+    document.querySelectorAll('.dm-yt-item').forEach(function(el, idx) {
+      el.classList.toggle('active', idx === i);
+    });
+    var active = document.querySelectorAll('.dm-yt-item')[i];
+    if (active) active.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }
+
+  async function loadPlaylist() {
+    var sidebar = document.getElementById('dm-yt-sidebar');
+    try {
+      var res  = await fetch(
+        'https://www.googleapis.com/youtube/v3/playlistItems' +
+        '?part=snippet&maxResults=20&playlistId=' + PLAYLIST_ID + '&key=' + YT_KEY
+      );
+      var data = await res.json();
+      if (data.error) throw new Error(data.error.message);
+
+      videos = (data.items || [])
+        .filter(function(it) {
+          return it.snippet && it.snippet.resourceId && it.snippet.resourceId.videoId;
+        })
+        .map(function(it) {
+          var t = it.snippet.thumbnails || {};
+          return {
+            id:      it.snippet.resourceId.videoId,
+            title:   it.snippet.title,
+            channel: it.snippet.channelTitle,
+            thumb:   (t.medium && t.medium.url) || (t.default && t.default.url) || ''
+          };
+        });
+
+      if (!videos.length) throw new Error('No videos found in this playlist.');
+
+      // Load first video immediately
+      selectVideo(0);
+
+      // Build sidebar list
+      sidebar.innerHTML = '<div class="dm-yt-sidebar-header">Playlist &middot; ' + videos.length + ' videos</div>' +
+        videos.map(function(v, i) {
+          return '<div class="dm-yt-item' + (i === 0 ? ' active' : '') + '" data-index="' + i + '">' +
+            '<div class="dm-yt-thumb"><img src="' + v.thumb + '" alt="" loading="lazy" onerror="this.style.opacity=0"></div>' +
+            '<div class="dm-yt-item-meta">' +
+              '<div class="dm-yt-item-title">' + v.title + '</div>' +
+              '<div class="dm-yt-item-num">' + (i + 1) + ' of ' + videos.length + '</div>' +
+            '</div></div>';
+        }).join('');
+
+      sidebar.addEventListener('click', function(e) {
+        var item = e.target.closest('.dm-yt-item');
+        if (item) selectVideo(parseInt(item.dataset.index, 10));
+      });
+
+    } catch (err) {
+      // Hide spinner, show error
+      document.getElementById('dm-yt-loading-screen').innerHTML =
+        '<span style="color:#666;font-size:12px;font-family:sans-serif;text-align:center;padding:20px;">Could not load playlist.<br>' + err.message + '</span>';
+
+      sidebar.innerHTML =
+        '<div class="dm-yt-sidebar-header">Playlist</div>' +
+        '<div class="dm-yt-sidebar-loading">' + err.message + '</div>';
+    }
+  }
+
+  loadPlaylist();
+  window.dmYTWidget = { selectVideo: selectVideo };
+})();
+</script>
+</body>
+</html>
